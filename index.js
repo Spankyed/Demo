@@ -1,4 +1,4 @@
-﻿// modules are defined as an array
+// modules are defined as an array
 // [ module function, map of requires ]
 //
 // map of requires is short require name -> numeric require
@@ -38773,7 +38773,8 @@ function (_System) {
     _classCallCheck(this, RecordSystem);
 
     _this = _possibleConstructorReturn(this, _getPrototypeOf(RecordSystem).call(this, 'Record'));
-    _this.startTime = 0;
+    _this.startTime; //start time is not used for playback
+
     _this.clips = [];
     _this.actions = [];
     _this.recording = false;
@@ -38793,18 +38794,18 @@ function (_System) {
             args[_key] = arguments[_key];
           }
 
-          console.log('check record', entity.id);
           entity.dispatchEvent.apply(entity, args);
 
           if (that.recording) {
             // without check code below is redundant on playback   
-            console.log('recording', entity.id, {
-              entity: entity,
-              time: time,
-              args: args
-            }); //entity.dispatchEvent(...args); // only let user dispatch events if recording?
 
-            var time = performance.now(); //evt.timeStamp; should pass evt to trigger instead 
+            /*console.log('recording action', {
+                  entity: entity, 
+                  time: time, 
+                  args: args
+              }) */
+            //entity.dispatchEvent(...args); // only let user dispatch events if recording?
+            var time = performance.now() - that.startTime; //evt.timeStamp; should pass evt to trigger instead?
 
             that.actions.push({
               entity: entity,
@@ -38837,8 +38838,9 @@ function (_System) {
       this.recording = true;
       this.startTime = startTime;
       var initials = {
-        entities: [],
-        startTime: startTime
+        entities: [] //startTime: TODO: allow user to define startime       
+        //record intitial values for entities in system
+
       };
 
       for (var i = 0; i < this.entities.length; ++i) {
@@ -38846,7 +38848,7 @@ function (_System) {
         initials.entities.push({
           entity: entity,
           startPosition: entity.id == 'player' ? entity.mesh.parent.position.clone() : entity.mesh.position.clone(),
-          //MUST USE PLAYER COLLIDER
+          //MUST USE PLAYER'S PARENT (COLLIDER)
           startRotation: entity.mesh.rotation.clone(),
           startScaling: entity.mesh.scaling.clone()
         });
@@ -38862,7 +38864,8 @@ function (_System) {
         initials: this.initials,
         actions: this.actions,
         id: this.clips.length,
-        time: this.actions[this.actions.length - 1].time - this.startTime
+        time: this.actions[this.actions.length - 1].time //console.log('clip recorded ', clip) 
+
       };
       this.clips.push(clip);
       this.startTime = 0;
@@ -38910,16 +38913,14 @@ function (_System) {
       var endTime = clip.time + 200; // add 200 ms of padding
 
       var i = 0;
-      duration(endTime).subscribe(function (time) {
-        //should check every plausible action to see if it needs to play, only checks next action rn
+      duration(endTime).subscribe(function (currTime) {
         // console.log('test frequency', endTime, time)
         if (i <= lastIndex) {
-          //console.log('next clip @ ', clip.actions[i].time - clip.initials.startTime)
-          if (time >= clip.actions[i].time - clip.initials.startTime) {
+          //console.log('next clip @ ', clip.actions[i].time)
+          if (currTime >= clip.actions[i].time) {
             var _clip$actions$i$entit;
 
-            console.log('trigger ', clip.actions[i].entity, "with", clip.actions[i].args);
-
+            //console.log('playing back action ', clip.actions[i])
             (_clip$actions$i$entit = clip.actions[i].entity).trigger.apply(_clip$actions$i$entit, _toConsumableArray(clip.actions[i].args).concat([false]));
 
             i++;
@@ -39247,7 +39248,6 @@ function () {
   }, {
     key: "PlayBack",
     value: function PlayBack(clip) {
-      console.log('playing ', clip);
       var recordSystem = this.ecs.getSystem('Record');
       recordSystem.playback(clip);
     }
@@ -39278,12 +39278,18 @@ var Clip = function Clip(_ref) {
   var time = (clip.time / 1000).toFixed(2); //divide by 1k to get time in seconds
 
   var play = function play() {
-    //cc.start();
+    //TODO: onclick change button background to green
     _Scheduler.default.PlayBack(clip);
   };
 
+  var showTimeLine = function showTimeLine(evt) {
+    actions.showTimeLine(clip);
+    $(evt.target).css('outline-color', 'green');
+  };
+
   return (0, _hyperapp.h)("div", {
-    class: "ui center aligned segment"
+    class: "ui center aligned segment",
+    onclick: showTimeLine
   }, (0, _hyperapp.h)("p", null, time, " seconds"), (0, _hyperapp.h)("div", {
     class: "ui icon buttons"
   }, (0, _hyperapp.h)("div", {
@@ -39325,11 +39331,7 @@ var RecordControls = function RecordControls(_ref) {
       actions = _ref.actions;
 
   var record = function record(event) {
-    var startTime = event.timeStamp; //let initPos = Object.assign({}, window.player.position);
-    //let alpha = window.camera.alpha;
-    //let beta = window.camera.beta;
-    //document.getElementById("renderCanvas").focus();
-    //cc.start(); //start charachter controller
+    var startTime = event.timeStamp;
 
     _Scheduler.default.Record(startTime);
 
@@ -39342,6 +39344,7 @@ var RecordControls = function RecordControls(_ref) {
     var clip = _Scheduler.default.Stop();
 
     actions.clip(clip);
+    actions.showTimeLine(clip);
   };
 
   return (0, _hyperapp.h)("div", null, recording ? (0, _hyperapp.h)("button", {
@@ -39371,6 +39374,122 @@ var _default = RecordControls;
 */
 
 exports.default = _default;
+},{"hyperapp":"../node_modules/hyperapp/src/index.js","../../core/Scheduler":"core/Scheduler.js"}],"ui/components/TimeLine.js":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = void 0;
+
+var _hyperapp = require("hyperapp");
+
+var _Scheduler = _interopRequireDefault(require("../../core/Scheduler"));
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var TimeLine = function TimeLine(_ref) {
+  var clip = _ref.clip;
+  //console.log('showing timeline for ', clip)
+  var entities = formatClip(clip);
+  return (0, _hyperapp.h)("div", {
+    class: "center aligned row"
+  }, (0, _hyperapp.h)("div", {
+    class: "two wide column"
+  }), (0, _hyperapp.h)("div", {
+    class: "fourteen wide column"
+  }, entities.map(function (entity, i) {
+    return (0, _hyperapp.h)(Segment, {
+      entity: entity,
+      index: i
+    });
+  })));
+};
+
+var Segment = function Segment(_ref2) {
+  var entity = _ref2.entity,
+      index = _ref2.index;
+  var actions = entity.actions;
+  var endTime = actions[actions.length - 1].time;
+  return (0, _hyperapp.h)("div", {
+    class: "ui segment",
+    id: "seg".concat(index)
+  }, actions.map(function (action, i) {
+    var normal = action.time / endTime; //pass offset callback to oncreate?
+
+    return (0, _hyperapp.h)(Action, {
+      action: action,
+      index: i,
+      norm: normal
+    });
+  }));
+};
+
+var Action = function Action(_ref3) {
+  var action = _ref3.action,
+      index = _ref3.index,
+      norm = _ref3.norm;
+  //console.log('action ', index, ' % ', norm)
+  //TODO: figure out length of parent segment and position with respect to norm
+
+  /*var seg = document.getElementById('seg0'); //the length of segments are all same
+  var segStart = seg.getBoundingClientRect().left;
+  var segEnd = seg.getBoundingClientRect().right;*/
+  var segLength = 1427.125; //segEnd - segStart;
+
+  var offsetLeft = segLength * norm; //+ segStart
+  //let offsetLeft = norm * 100;
+
+  setTimeout(function () {
+    $(document.getElementById("act".concat(index))).offset({
+      left: offsetLeft
+    });
+  }, 50);
+  console.log("offset ".concat(index, " ").concat(offsetLeft));
+  return (0, _hyperapp.h)("svg", {
+    width: "20",
+    height: "20",
+    id: "act".concat(index),
+    style: "left:".concat(offsetLeft, "px")
+  }, (0, _hyperapp.h)("rect", {
+    width: "10",
+    height: "10",
+    fill: "red",
+    transform: "rotate(45 0 10)"
+  }));
+};
+
+var _default = TimeLine; //Utility function: may not be working 100% (duplicate data)
+
+exports.default = _default;
+
+function formatClip(clip) {
+  var actions = clip.actions; //clip data restructure 
+
+  var entities = {};
+
+  for (var i = 0; i < actions.length; i++) {
+    var entity = actions[i].entity.id;
+
+    if (entities[entity]) {
+      entities[entity].actions.push(actions[i]);
+    } else {
+      entities[entity] = {}; //this should mutate original object from undefined
+
+      entities[entity].id = entity;
+      entities[entity].actions = [];
+      entities[entity].actions.push(actions[i]);
+    }
+  }
+
+  var retArr = [];
+
+  for (var _entity in entities) {
+    retArr.push(entities[_entity]);
+  }
+
+  return retArr;
+}
 },{"hyperapp":"../node_modules/hyperapp/src/index.js","../../core/Scheduler":"core/Scheduler.js"}],"ui/views/scheduler.js":[function(require,module,exports) {
 "use strict";
 
@@ -39385,6 +39504,8 @@ var _Clip = _interopRequireDefault(require("../components/Clip"));
 
 var _RecordControls = _interopRequireDefault(require("../components/RecordControls"));
 
+var _TimeLine = _interopRequireDefault(require("../components/TimeLine"));
+
 var _Scheduler = _interopRequireDefault(require("../../core/Scheduler"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
@@ -39393,7 +39514,8 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 var view = function view(state, actions) {
   var recording = state.recording,
       empty = state.empty,
-      clips = state.clips;
+      clips = state.clips,
+      timeline = state.timeline;
 
   var init = function init() {
     _Scheduler.default.Setup(actions);
@@ -39402,7 +39524,7 @@ var view = function view(state, actions) {
   };
 
   return (0, _hyperapp.h)("div", {
-    class: "ui two column  celled grid"
+    class: "ui two column celled grid"
   }, (0, _hyperapp.h)("div", {
     class: "center aligned row"
   }, (0, _hyperapp.h)("div", {
@@ -39426,12 +39548,14 @@ var view = function view(state, actions) {
       clip: clip,
       actions: actions
     });
-  })))));
+  })))), timeline.show ? (0, _hyperapp.h)(_TimeLine.default, {
+    clip: timeline.clip
+  }) : (0, _hyperapp.h)("div", null, " No timeline to show "));
 };
 
 var _default = view;
 exports.default = _default;
-},{"hyperapp":"../node_modules/hyperapp/src/index.js","../components/Clip":"ui/components/Clip.js","../components/RecordControls":"ui/components/RecordControls.js","../../core/Scheduler":"core/Scheduler.js"}],"ui/actions/record.js":[function(require,module,exports) {
+},{"hyperapp":"../node_modules/hyperapp/src/index.js","../components/Clip":"ui/components/Clip.js","../components/RecordControls":"ui/components/RecordControls.js","../components/TimeLine":"ui/components/TimeLine.js","../../core/Scheduler":"core/Scheduler.js"}],"ui/actions/record.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -39452,6 +39576,10 @@ var recordState = {
   recording: false,
   empty: true,
   clips: [],
+  timeline: {
+    show: false,
+    clip: {}
+  },
   error: null
 };
 exports.recordState = recordState;
@@ -39475,6 +39603,16 @@ var recordActions = {
     return function (state) {
       return {
         clips: _toConsumableArray(state.clips).concat([_clip])
+      };
+    };
+  },
+  showTimeLine: function showTimeLine(clip) {
+    return function () {
+      return {
+        timeline: {
+          show: true,
+          clip: clip
+        }
       };
     };
   },
@@ -39703,7 +39841,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "49853" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "56698" + '/');
 
   ws.onmessage = function (event) {
     var data = JSON.parse(event.data);
